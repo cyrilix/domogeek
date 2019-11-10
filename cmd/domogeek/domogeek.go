@@ -8,6 +8,16 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	cal          calendar.Calendar
+	calCounter   *prometheus.CounterVec
+	calSummary   *prometheus.SummaryVec
+	calHistogram *prometheus.HistogramVec
 )
 
 func init() {
@@ -15,7 +25,33 @@ func init() {
 	if err != nil {
 		log.Fatalf("unable to load time location: %v", err)
 	}
-	cal = calendar.Calendar{loc}
+	cal = calendar.Calendar{Location: loc}
+
+	calCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "domogeek",
+		Subsystem: "calendar",
+		Name:      "request_total",
+		Help:      "Total request to calendar service",
+	},
+		[]string{
+			"code",
+			"method",
+		})
+
+	calSummary = promauto.NewSummaryVec(prometheus.SummaryOpts{
+		Namespace: "domogeek",
+		Subsystem: "calendar",
+		Name:      "summary",
+		Help:      "Calendar request summary",
+	},
+		nil)
+	calHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "domogeek",
+		Subsystem: "calendar",
+		Name:      "histogram",
+		Help:      "Request duration histogram",
+	},
+		nil)
 }
 
 type CalendarDay struct {
@@ -25,8 +61,6 @@ type CalendarDay struct {
 	Holiday    bool      `json:"holiday"`
 	Weekday    bool      `json:"weekday"`
 }
-
-var cal calendar.Calendar
 
 type CalendarHandler struct{}
 
@@ -64,6 +98,14 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("start server on %s", addr)
 
-	http.Handle("/calendar", &CalendarHandler{})
+	h := promhttp.InstrumentHandlerDuration(
+		calHistogram,
+		promhttp.InstrumentHandlerDuration(
+			calSummary,
+			promhttp.InstrumentHandlerCounter(
+				calCounter,
+				&CalendarHandler{})))
+	http.Handle("/calendar", &h)
+	http.Handle("/metrics", promhttp.Handler())
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
