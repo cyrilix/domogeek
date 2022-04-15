@@ -1,16 +1,19 @@
 package main
 
 import (
+	"context"
 	"domogeek/calendar"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
-	"net/http"
-	"time"
+
+	"github.com/hellofresh/health-go/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
+	"net/http"
+	"time"
 )
 
 var (
@@ -107,5 +110,16 @@ func main() {
 				&CalendarHandler{})))
 	http.Handle("/calendar", &h)
 	http.Handle("/metrics", promhttp.Handler())
+	healthz, _ := health.New(health.WithChecks(health.Config{
+		Name:      "calendar",
+		Timeout:   time.Second * 5,
+		SkipOnErr: false,
+		Check: func(ctx context.Context) error {
+			return nil
+		},
+	},
+	))
+	http.Handle("/status", healthz.Handler())
+
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
