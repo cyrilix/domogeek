@@ -69,7 +69,7 @@ func TestCalendar_GetHolidaysSet(t *testing.T) {
 
 	expectedHolidays := []time.Time{
 		time.Date(2020, time.January, 1, 0, 0, 0, 0, loc),
-		time.Date(2020, time.April, 12, 0, 0, 0, 0, loc),
+		time.Date(2020, time.April, 13, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 1, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 8, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 21, 0, 0, 0, 0, loc),
@@ -101,7 +101,7 @@ func TestCalendar_IsHolidays(t *testing.T) {
 
 	expectedHolidays := []time.Time{
 		time.Date(2020, time.January, 1, 0, 0, 0, 0, loc),
-		time.Date(2020, time.April, 12, 0, 0, 0, 0, loc),
+		time.Date(2020, time.April, 13, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 1, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 8, 0, 0, 0, 0, loc),
 		time.Date(2020, time.May, 21, 0, 0, 0, 0, loc),
