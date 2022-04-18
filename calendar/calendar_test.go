@@ -18,7 +18,7 @@ func TestCalendar_GetEasterDay(t *testing.T) {
 		time.Date(2021, time.April, 4, 0, 0, 0, 0, loc),
 	}
 
-	c := Calendar{loc}
+	c := New(loc)
 
 	for _, d := range easterDays {
 		easter := c.GetEasterDay(d.Year())
@@ -37,7 +37,7 @@ func TestCalendar_GetHolidays(t *testing.T) {
 
 	expectedHolidays := map[time.Time]bool{
 		time.Date(2020, time.January, 1, 0, 0, 0, 0, loc):   true,
-		time.Date(2020, time.April, 12, 0, 0, 0, 0, loc):    true,
+		time.Date(2020, time.April, 13, 0, 0, 0, 0, loc):    true,
 		time.Date(2020, time.May, 1, 0, 0, 0, 0, loc):       true,
 		time.Date(2020, time.May, 8, 0, 0, 0, 0, loc):       true,
 		time.Date(2020, time.May, 21, 0, 0, 0, 0, loc):      true,

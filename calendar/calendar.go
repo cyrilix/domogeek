@@ -50,7 +50,7 @@ func (cal *Calendar) GetHolidays(year int) *[]time.Time {
 		// Jour de l'an
 		time.Date(year, time.January, 1, 0, 0, 0, 0, cal.Location),
 		// Easter
-		paques,
+		paques.AddDate(0, 0, 1),
 		// 1 mai
 		time.Date(year, time.May, 1, 0, 0, 0, 0, cal.Location),
 		// 8 mai
