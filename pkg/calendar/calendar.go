@@ -5,7 +5,7 @@ import (
 	"github.com/dolanor/caldav-go/caldav"
 	"github.com/dolanor/caldav-go/caldav/entities"
 	"github.com/dolanor/caldav-go/icalendar/components"
-	"log"
+	"go.uber.org/zap"
 	"math"
 	"net/http"
 	"strings"
@@ -148,7 +148,7 @@ func (cal *Calendar) IsHoliday(date time.Time) bool {
 	day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, cal.Location)
 	caldavHolidays, err := cal.IsHolidaysFromCaldav(day)
 	if err != nil {
-		log.Printf("unable to check holidays from caldav: %v", err)
+		zap.S().Errorf("unable to check holidays from caldav: %v", err)
 	}
 	return h[day] || caldavHolidays
 }

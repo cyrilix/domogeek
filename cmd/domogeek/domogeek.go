@@ -6,16 +6,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/hellofresh/health-go/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -30,7 +30,7 @@ var (
 func init() {
 	loc, err := time.LoadLocation("Europe/Paris")
 	if err != nil {
-		log.Fatalf("unable to load time location: %v", err)
+		zap.S().Fatalf("unable to load time location: %v", err)
 	}
 	location = loc
 
@@ -71,7 +71,7 @@ type CalendarDay struct {
 
 type CalendarHandler struct{}
 
-func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	now := time.Now()
 	cd := CalendarDay{
 		Day:        now,
@@ -84,12 +84,12 @@ func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	content, err := json.Marshal(cd)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("unable to marshall response %v, %v", content, err)
+		zap.S().Errorf("unable to marshall response %v, %v", content, err)
 	} else {
 		_, err = w.Write(content)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			log.Printf("unable to marshall response %v, :%v", content, err)
+			zap.S().Errorf("unable to marshall response %v, :%v", content, err)
 		}
 	}
 }
@@ -106,9 +106,28 @@ func main() {
 	flag.StringVar(&caldavSummaryPattern, "caldav-summary-pattern", "Holidays", "Summary pattern that matches holidays event")
 	flag.Parse()
 
+	logLevel := zap.LevelFlag("log", zap.InfoLevel, "log level")
+	flag.Parse()
+
+	if len(os.Args) <= 1 {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	config := zap.NewDevelopmentConfig()
+	config.Level = zap.NewAtomicLevelAt(*logLevel)
+	lgr, err := config.Build()
+	if err != nil {
+		log.Fatalf("unable to init logger: %v", err)
+	}
+	defer func() {
+		_ = lgr.Sync()
+	}()
+	zap.ReplaceGlobals(lgr)
+
 	cdav, err := calendar.NewCaldav(caldavUrl, caldavPath)
 	if err != nil {
-		log.Fatalf("unable to init caldav instance")
+		zap.S().Fatal("unable to init caldav instance")
 	}
 	cal = calendar.New(location,
 		calendar.WithCaldav(cdav),
@@ -117,7 +136,7 @@ func main() {
 	)
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	log.Printf("start server on %s", addr)
+	zap.S().Infof("start server on %s", addr)
 
 	h := promhttp.InstrumentHandlerDuration(
 		calHistogram,
@@ -150,10 +169,10 @@ func main() {
 
 	signChan := make(chan os.Signal, 1)
 	go func() {
-		log.Fatal(http.ListenAndServe(addr, nil))
+		zap.S().Fatal(http.ListenAndServe(addr, nil))
 	}()
 
 	signal.Notify(signChan, syscall.SIGTERM)
 	<-signChan
-	log.Printf("exit on sigterm")
+	zap.S().Info("exit on sigterm")
 }
