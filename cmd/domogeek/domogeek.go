@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"domogeek/calendar"
+	"domogeek/pkg/calendar"
 	"encoding/json"
 	"flag"
 	"fmt"
