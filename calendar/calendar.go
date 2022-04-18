@@ -1,12 +1,73 @@
 package calendar
 
 import (
+	"fmt"
+	"github.com/dolanor/caldav-go/caldav"
+	"github.com/dolanor/caldav-go/caldav/entities"
+	"github.com/dolanor/caldav-go/icalendar/components"
+	"log"
 	"math"
+	"net/http"
+	"strings"
 	"time"
 )
 
+type Caldav interface {
+	QueryEvents(path string, query *entities.CalendarQuery) (events []*components.Event, oerr error)
+}
+
 type Calendar struct {
-	Location *time.Location
+	Location             *time.Location
+	cdav                 Caldav
+	caldavPath           string
+	caldavSummaryPattern string
+}
+
+func NewCaldav(caldavUrl, caldavPath string) (Caldav, error) {
+	// create a reference to your CalDAV-compliant server
+	server, _ := caldav.NewServer(caldavUrl)
+	// create a CalDAV client to speak to the server
+	var client = caldav.NewClient(server, http.DefaultClient)
+	// start executing requests!
+	err := client.ValidateServer(caldavPath)
+	if err != nil {
+		return nil, fmt.Errorf("bad caldav configuration, unable to validate connexion: %w", err)
+	}
+	return client, nil
+}
+
+type Option func(calendar *Calendar)
+
+func WithCaldav(cdav Caldav) Option {
+	return func(calendar *Calendar) {
+		calendar.cdav = cdav
+	}
+}
+
+func WithCaldavSummaryPattern(caldavSummaryPattern string) Option {
+	return func(calendar *Calendar) {
+		calendar.caldavSummaryPattern = caldavSummaryPattern
+	}
+}
+
+func WithCaldavPath(caldavPath string) Option {
+	return func(calendar *Calendar) {
+		calendar.caldavPath = caldavPath
+	}
+}
+
+func New(location *time.Location, opts ...Option) *Calendar {
+	c := &Calendar{
+		location,
+		nil,
+		"",
+		"",
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 func (cal *Calendar) GetEasterDay(year int) time.Time {
@@ -72,20 +133,24 @@ func (cal *Calendar) GetHolidays(year int) *[]time.Time {
 	return &joursFeries
 }
 
-func (cal *Calendar) GetHolidaysSet(year int) *map[time.Time]bool {
+func (cal *Calendar) GetHolidaysSet(year int) map[time.Time]bool {
 	holidays := cal.GetHolidays(year)
 	result := make(map[time.Time]bool, len(*holidays))
 	for _, h := range *holidays {
 		result[h] = true
 	}
-	return &result
+	return result
 }
 
-func(cal *Calendar) IsHoliday(date time.Time) bool{
+func (cal *Calendar) IsHoliday(date time.Time) bool {
 	h := cal.GetHolidaysSet(date.Year())
 	d := date.In(cal.Location)
 	day := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, cal.Location)
-	return (*h)[day]
+	caldavHolidays, err := cal.IsHolidaysFromCaldav(day)
+	if err != nil {
+		log.Printf("unable to check holidays from caldav: %v", err)
+	}
+	return h[day] || caldavHolidays
 }
 
 func (cal *Calendar) IsWorkingDay(date time.Time) bool {
@@ -96,6 +161,27 @@ func (cal *Calendar) IsWorkingDayToday() bool {
 	return cal.IsWorkingDay(time.Now())
 }
 
-func (cal *Calendar) IsWeekDay(day time.Time) bool{
+func (cal *Calendar) IsWeekDay(day time.Time) bool {
 	return day.Weekday() >= time.Monday && day.Weekday() <= time.Friday
+}
+
+func (cal *Calendar) IsHolidaysFromCaldav(day time.Time) (bool, error) {
+	if cal.cdav == nil {
+		return false, nil
+	}
+	query, err := entities.NewEventRangeQuery(day.UTC(), day.UTC().Add(23*time.Hour+59*time.Minute))
+	if err != nil {
+		return false, fmt.Errorf("unable to build events range query: %v", err)
+	}
+	events, err := cal.cdav.QueryEvents(cal.caldavPath, query)
+	if err != nil {
+		return false, fmt.Errorf("unable list events from caldav: %v", err)
+	}
+
+	for _, evt := range events {
+		if strings.Contains(evt.Summary, cal.caldavSummaryPattern) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/hellofresh/health-go/v4"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,7 +20,8 @@ import (
 )
 
 var (
-	cal          calendar.Calendar
+	cal          *calendar.Calendar
+	location     *time.Location
 	calCounter   *prometheus.CounterVec
 	calSummary   *prometheus.SummaryVec
 	calHistogram *prometheus.HistogramVec
@@ -28,7 +32,7 @@ func init() {
 	if err != nil {
 		log.Fatalf("unable to load time location: %v", err)
 	}
-	cal = calendar.Calendar{Location: loc}
+	location = loc
 
 	calCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "domogeek",
@@ -93,10 +97,24 @@ func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func main() {
 	var port int
 	var host string
+	var caldavUrl, caldavPath, caldavSummaryPattern string
 
 	flag.StringVar(&host, "host", "", "host to listen, default all addresses")
 	flag.IntVar(&port, "port", 8080, "port to listen")
+	flag.StringVar(&caldavUrl, "caldav-url", "", "caldav url to use to read holidays events")
+	flag.StringVar(&caldavPath, "caldav-path", "", "caldav path to use to read holidays events")
+	flag.StringVar(&caldavSummaryPattern, "caldav-summary-pattern", "Holidays", "Summary pattern that matches holidays event")
 	flag.Parse()
+
+	cdav, err := calendar.NewCaldav(caldavUrl, caldavPath)
+	if err != nil {
+		log.Fatalf("unable to init caldav instance")
+	}
+	cal = calendar.New(location,
+		calendar.WithCaldav(cdav),
+		calendar.WithCaldavPath(caldavPath),
+		calendar.WithCaldavSummaryPattern(caldavSummaryPattern),
+	)
 
 	addr := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("start server on %s", addr)
@@ -117,9 +135,25 @@ func main() {
 		Check: func(ctx context.Context) error {
 			return nil
 		},
-	},
-	))
+	}),
+		health.WithChecks(health.Config{
+			Name:      "caldav",
+			Timeout:   5 * time.Second,
+			SkipOnErr: false,
+			Check: func(ctx context.Context) error {
+				_, err := cal.IsHolidaysFromCaldav(time.Now())
+				return err
+			},
+		}),
+	)
 	http.Handle("/status", healthz.Handler())
 
-	log.Fatal(http.ListenAndServe(addr, nil))
+	signChan := make(chan os.Signal, 1)
+	go func() {
+		log.Fatal(http.ListenAndServe(addr, nil))
+	}()
+
+	signal.Notify(signChan, syscall.SIGTERM)
+	<-signChan
+	log.Printf("exit on sigterm")
 }
