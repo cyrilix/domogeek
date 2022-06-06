@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,7 +76,7 @@ func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	now := time.Now()
 	calDavHolidays, err := cal.IsHolidaysFromCaldav(now)
 	if err != nil {
-		zap.S().Warnf("unable to read holliday status from caldav: %v", err)
+		zap.S().Warnf("unable to read holiday status from caldav: %v", err)
 		calDavHolidays = false
 	}
 
@@ -103,6 +104,7 @@ func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 func main() {
 	var port int
 	var host string
+	var user, pwd string
 	var caldavUrl, caldavPath, caldavSummaryPattern string
 
 	flag.StringVar(&host, "host", "", "host to listen, default all addresses")
@@ -110,6 +112,8 @@ func main() {
 	flag.StringVar(&caldavUrl, "caldav-url", "", "caldav url to use to read holidays events")
 	flag.StringVar(&caldavPath, "caldav-path", "", "caldav path to use to read holidays events")
 	flag.StringVar(&caldavSummaryPattern, "caldav-summary-pattern", "Holidays", "Summary pattern that matches holidays event")
+	flag.StringVar(&user, "caldav-username", "", "Username credential")
+	flag.StringVar(&pwd, "caldav-password", "", "Password credential")
 	flag.Parse()
 
 	logLevel := zap.LevelFlag("log", zap.InfoLevel, "log level")
@@ -131,7 +135,13 @@ func main() {
 	}()
 	zap.ReplaceGlobals(lgr)
 
-	cdav, err := calendar.NewCaldav(caldavUrl, caldavPath)
+	urlCaldav, err := url.Parse(caldavUrl)
+	if err != nil {
+		zap.S().Panicf("invalid caldav url '%v': %v", caldavUrl, err)
+	}
+	urlCaldav.User = url.UserPassword(user, pwd)
+
+	cdav, err := calendar.NewCaldav(urlCaldav.String(), caldavPath)
 	if err != nil {
 		zap.S().Fatal("unable to init caldav instance")
 	}
@@ -167,6 +177,9 @@ func main() {
 			SkipOnErr: false,
 			Check: func(ctx context.Context) error {
 				_, err := cal.IsHolidaysFromCaldav(time.Now())
+				if err != nil {
+					zap.S().Warnf("unable to check caldav connection: %v", err)
+				}
 				return err
 			},
 		}),
