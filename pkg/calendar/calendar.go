@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"fmt"
+	"github.com/avast/retry-go"
 	"github.com/dolanor/caldav-go/caldav"
 	"github.com/dolanor/caldav-go/caldav/entities"
 	"github.com/dolanor/caldav-go/icalendar/components"
@@ -28,10 +29,25 @@ func NewCaldav(caldavUrl, caldavPath string) (Caldav, error) {
 	server, _ := caldav.NewServer(caldavUrl)
 	// create a CalDAV client to speak to the server
 	var client = caldav.NewClient(server, http.DefaultClient)
-	// start executing requests!
-	err := client.ValidateServer(caldavPath)
+	err := retry.Do(
+		func() error {
+			// start executing requests!
+			err := client.ValidateServer(caldavPath)
+			if err != nil {
+				return fmt.Errorf("bad caldav configuration, unable to validate connexion: %w", err)
+			}
+			return nil
+		},
+		retry.OnRetry(
+			func(n uint, err error) {
+				zap.S().Errorf("unable to validate caldav connection on retry %d: %v", n, err)
+			},
+		),
+		retry.Attempts(0), // Infinite attempts
+		retry.DelayType(retry.BackOffDelay),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("bad caldav configuration, unable to validate connexion: %w", err)
+		return nil, fmt.Errorf("unable to validate caldav connection: %w", err)
 	}
 	return client, nil
 }
