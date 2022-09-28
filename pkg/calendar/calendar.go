@@ -43,8 +43,9 @@ func NewCaldav(caldavUrl, caldavPath string) (Caldav, error) {
 				zap.S().Errorf("unable to validate caldav connection on retry %d: %v", n, err)
 			},
 		),
-		retry.Attempts(0), // Infinite attempts
+		retry.Attempts(1000),
 		retry.DelayType(retry.BackOffDelay),
+		retry.MaxDelay(24*time.Hour),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to validate caldav connection: %w", err)
