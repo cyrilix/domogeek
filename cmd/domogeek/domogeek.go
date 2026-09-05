@@ -73,20 +73,7 @@ type CalendarDay struct {
 type CalendarHandler struct{}
 
 func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	now := time.Now()
-	calDavHolidays, err := cal.IsHolidaysFromCaldav(now)
-	if err != nil {
-		zap.S().Warnf("unable to read holiday status from caldav: %v", err)
-		calDavHolidays = false
-	}
-
-	cd := CalendarDay{
-		Day:        now,
-		WorkingDay: cal.IsWorkingDay(now),
-		Ferie:      cal.IsHoliday(now),
-		Holiday:    calDavHolidays,
-		Weekday:    cal.IsWeekDay(now),
-	}
+	cd := calendarDayFor(time.Now())
 
 	content, err := json.Marshal(cd)
 	if err != nil {
@@ -185,6 +172,7 @@ func main() {
 		}),
 	)
 	http.Handle("/status", healthz.Handler())
+	http.Handle("/mcp", newMCPHandler())
 
 	signChan := make(chan os.Signal, 1)
 	go func() {
