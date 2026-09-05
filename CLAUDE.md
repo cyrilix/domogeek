@@ -47,19 +47,21 @@ docker build -t domogeek .
 
 ## Architecture
 
-- `cmd/domogeek/domogeek.go` — the binary entrypoint. Wires up flags, zap logging, the `calendar.Calendar`, Prometheus metrics/instrumented handlers, and a `health-go` health check, then serves four HTTP routes:
+- `cmd/domogeek/domogeek.go` — the binary entrypoint. Wires up flags, zap logging, the `calendar.Calendar`, Prometheus metrics/instrumented handlers, and a `health-go` health check, then serves five HTTP routes:
   - `GET /calendar` — returns a `CalendarDay` JSON payload (`working_day`, `ferie`, `holiday`, `weekday`) for "now" in `Europe/Paris`.
+  - `GET /datetime` — returns a `CurrentDateTime` JSON payload (`date_time`) for "now" in `Europe/Paris` (`DateTimeHandler`).
   - `POST /mcp` — MCP Streamable HTTP endpoint (see `cmd/domogeek/mcp.go` below).
   - `GET /metrics` — Prometheus metrics (request counter/summary/histogram wrapping the calendar handler, defined in `init()`).
   - `GET /status` — health-go handler with two checks: a static `calendar` check and a `caldav` check that calls `cal.IsHolidaysFromCaldav`.
   - The process blocks on `SIGTERM` (not `SIGINT`) via a signal channel; `http.ListenAndServe` runs in a goroutine and `zap.S().Fatal`s the process on error.
 
-- `cmd/domogeek/mcp.go` — MCP server built with `github.com/modelcontextprotocol/go-sdk/mcp`, mounted at `/mcp` via `mcp.NewStreamableHTTPHandler`. Exposes three tools, all reading the same package-level `cal`/`location` globals as the `/calendar` handler:
+- `cmd/domogeek/mcp.go` — MCP server built with `github.com/modelcontextprotocol/go-sdk/mcp`, mounted at `/mcp` via `mcp.NewStreamableHTTPHandler`. Exposes four tools, all reading the same package-level `cal`/`location` globals as the `/calendar` and `/datetime` handlers:
+  - `get_current_datetime` — same payload as `GET /datetime`: the current date and time.
   - `get_calendar_today` — same payload as `GET /calendar`, for now.
   - `get_calendar_for_date` — same payload for an arbitrary `date` (`YYYY-MM-DD`); an invalid date is returned as a tool error (`CallToolResult.IsError`), not a protocol-level error, so an MCP client/LLM can see and self-correct.
   - `get_holidays` — lists French public holidays (`Calendar.GetHolidays`) for a given `year`, defaulting to the current year if omitted.
   - `calendarDayFor` in this file is the single place that builds a `CalendarDay` from a `time.Time`; both the HTTP `/calendar` handler and the MCP tools call it, so there's one code path for the working-day/ferie/holiday/weekday logic.
-  - `cmd/domogeek/mcp_test.go` unit-tests the handler functions directly; `cmd/domogeek/mcp_e2e_test.go` drives the real Streamable HTTP transport with an MCP client (`httptest.Server` + `mcp.NewClient(...).Connect`) to check the wiring end-to-end (tool listing, structured content, and the tool-error-vs-protocol-error distinction).
+  - `cmd/domogeek/mcp_test.go` unit-tests the handler functions directly; `cmd/domogeek/mcp_e2e_test.go` drives the real Streamable HTTP transport with an MCP client (`httptest.Server` + `mcp.NewClient(...).Connect`) to check the wiring end-to-end (tool listing, structured content, and the tool-error-vs-protocol-error distinction). `cmd/domogeek/datetime_test.go` covers the `/datetime` HTTP handler directly.
 
 - `pkg/calendar/calendar.go` — all domain logic, built around the `Calendar` struct and functional options (`WithCaldav`, `WithCaldavPath`, `WithCaldavSummaryPattern`):
   - `GetEasterDay` implements the Gauss/Meeus algorithm to compute Easter Sunday for a given year (in `cal.Location`); `GetHolidays` derives the fixed-date French public holidays plus two computed from it: Easter Monday (Easter+1) and Ascension (Easter+39).

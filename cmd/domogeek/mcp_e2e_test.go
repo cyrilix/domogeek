@@ -26,12 +26,23 @@ func TestMCPEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tools failed: %v", err)
 	}
-	if len(tools.Tools) != 3 {
-		t.Fatalf("got %d tools, want 3", len(tools.Tools))
+	if len(tools.Tools) != 4 {
+		t.Fatalf("got %d tools, want 4", len(tools.Tools))
 	}
 	for _, tool := range tools.Tools {
 		t.Logf("tool: %s - %s", tool.Name, tool.Description)
 	}
+
+	now, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "get_current_datetime",
+	})
+	if err != nil {
+		t.Fatalf("call get_current_datetime failed: %v", err)
+	}
+	if now.IsError {
+		t.Fatalf("get_current_datetime returned an error result: %v", now.Content)
+	}
+	t.Logf("current datetime structured content: %+v", now.StructuredContent)
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "get_calendar_for_date",

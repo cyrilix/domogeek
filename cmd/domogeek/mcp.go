@@ -38,6 +38,10 @@ func calendarDayFor(day time.Time) CalendarDay {
 	}
 }
 
+func handleCurrentDateTime(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, CurrentDateTime, error) {
+	return nil, CurrentDateTime{DateTime: time.Now().In(location)}, nil
+}
+
 func handleCalendarToday(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, CalendarDay, error) {
 	return nil, calendarDayFor(time.Now().In(location)), nil
 }
@@ -63,6 +67,11 @@ func newMCPHandler() http.Handler {
 		Name:    "domogeek",
 		Version: "1.0.0",
 	}, nil)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_current_datetime",
+		Description: "Get the current date and time",
+	}, handleCurrentDateTime)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_calendar_today",

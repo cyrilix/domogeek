@@ -66,6 +66,18 @@ func TestCalendarDayFor(t *testing.T) {
 	}
 }
 
+func TestHandleCurrentDateTime(t *testing.T) {
+	_, dt, err := handleCurrentDateTime(context.Background(), nil, struct{}{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	now := time.Now().In(location)
+	if diff := now.Sub(dt.DateTime); diff < -time.Second || diff > time.Second {
+		t.Errorf("DateTime = %v, want close to %v", dt.DateTime, now)
+	}
+}
+
 func TestHandleCalendarToday(t *testing.T) {
 	withTestCalendar(t)
 

@@ -88,6 +88,26 @@ func (c *CalendarHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+type CurrentDateTime struct {
+	DateTime time.Time `json:"date_time"`
+}
+
+type DateTimeHandler struct{}
+
+func (d *DateTimeHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	content, err := json.Marshal(CurrentDateTime{DateTime: time.Now().In(location)})
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		zap.S().Errorf("unable to marshall response %v, %v", content, err)
+	} else {
+		_, err = w.Write(content)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			zap.S().Errorf("unable to marshall response %v, :%v", content, err)
+		}
+	}
+}
+
 func main() {
 	var port int
 	var host string
@@ -173,6 +193,7 @@ func main() {
 	)
 	http.Handle("/status", healthz.Handler())
 	http.Handle("/mcp", newMCPHandler())
+	http.Handle("/datetime", &DateTimeHandler{})
 
 	signChan := make(chan os.Signal, 1)
 	go func() {
