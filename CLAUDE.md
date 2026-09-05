@@ -37,13 +37,39 @@ go run -mod=vendor ./cmd/domogeek \
 
 Running with no flags at all prints usage and exits (see the `len(os.Args) <= 1` check in `main`). Note: despite the "caldav flags are optional" framing, `main()` currently calls `calendar.NewCaldav` unconditionally, even with an empty `-caldav-url` — with no caldav server to validate against, this hits the 1000-retry exponential backoff described below and the process never gets to `http.ListenAndServe`. This is a pre-existing quirk, not something introduced by the MCP work; if you need a quick local instance (e.g. to exercise `/mcp` or `/calendar` without a real CalDAV server), it's easiest to call `newMCPHandler()`/`calendar.New(location)` directly from a small throwaway `main`/test rather than running the built binary.
 
-Docker image (multi-stage, distroless):
+Docker image (multi-stage, distroless), for local testing:
 
 ```bash
-docker build -t domogeek .
+docker build -t domogeek .   # or: buildah bud -t domogeek .
 ```
 
-`build-docker.sh` is the multi-arch (amd64/arm64/arm/v7) release build using `buildah`, producing a manifest pushed to `docker.io/cyrilix/domogeek:<git describe>`. It is a release/CI script, not needed for local development.
+## Continuous builds
+
+Pushing a Git tag matching `v[0-9]*` (existing convention: `vX.Y.Z`, e.g. `v0.4.0`) to
+the Gitea remote triggers the homelab Tekton pipeline `gitea-docker-build-multiarch`,
+which builds and pushes a multi-arch (amd64 + arm64) image plus a signed CycloneDX SBOM:
+
+```
+git.cyrilix.bzh/cyrilix/domogeek:<tag>
+```
+
+The pipeline uses its defaults — `Dockerfile` at the repo root, build context `.` — so
+the Dockerfile must stay at the root. It builds each target platform natively (no
+`GOOS`/`GOARCH` overrides in the `go build` step), so the Dockerfile must not hardcode a
+single-arch `GOOS`/`GOARCH` — that was a real bug fixed alongside this: the builder image
+is now pinned to `golang:1.27-alpine` (matching the `go 1.25` module requirement) and the
+`go build` step targets the whole package (`./cmd/domogeek`), not a single file.
+
+There is no Tekton YAML in this repo: the pipeline and its Gitea webhook trigger are
+defined cluster-side. Watch a run: <https://tekton.banquise.cyrilix.bzh>
+
+```sh
+git tag v0.4.0
+git push --tags
+```
+
+Note: this replaces the previous `docker.io/cyrilix/domogeek:<git describe>` releases
+built locally via the now-removed `build-docker.sh`/`buildah` script.
 
 ## Architecture
 

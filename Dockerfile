@@ -1,11 +1,8 @@
-FROM golang:alpine as builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /go/src
 ADD . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -tags netgo -o /go/bin/domogeek cmd/domogeek/domogeek.go
-
-
-
+RUN CGO_ENABLED=0 go build -mod=vendor -tags netgo -o /go/bin/domogeek ./cmd/domogeek
 
 FROM gcr.io/distroless/static
 
