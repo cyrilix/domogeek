@@ -45,28 +45,27 @@ docker build -t domogeek .   # or: buildah bud -t domogeek .
 
 ## Continuous builds
 
-Pushing a Git tag matching `v[0-9]*` (existing convention: `vX.Y.Z`, e.g. `v0.4.0`) to
-the Gitea remote triggers the homelab Tekton pipeline `gitea-docker-build-multiarch`,
-which builds and pushes a multi-arch (amd64 + arm64) image plus a signed CycloneDX SBOM:
+Pushing a Git tag matching `v[0-9]*` (convention: `vX.Y.Z`, e.g. `v0.4.0`) to the Gitea remote
+triggers the **Gitea Actions** workflow `.gitea/workflows/build.yaml` (homelab runner, no Docker,
+no privileges): the binary is cross-compiled for amd64/arm64 (CGO off, `netgo`, vendored, Go 1.27 =
+`GO_VERSION` in the workflow), appended onto the pinned `gcr.io/distroless/static-debian12` base
+with `crane` (entrypoint `/go/bin/domogeek`, user 1234, port 8080), and published as a multi-arch
+image plus a CycloneDX SBOM uploaded to DependencyTrack (no cosign signature anymore):
 
 ```
 git.cyrilix.bzh/cyrilix/domogeek:<tag>
 ```
 
-The pipeline uses its defaults — `Dockerfile` at the repo root, build context `.` — so
-the Dockerfile must stay at the root. It builds each target platform natively (no
-`GOOS`/`GOARCH` overrides in the `go build` step), so the Dockerfile must not hardcode a
-single-arch `GOOS`/`GOARCH` — that was a real bug fixed alongside this: the builder image
-is now pinned to `golang:1.27-alpine` (matching the `go 1.25` module requirement) and the
-`go build` step targets the whole package (`./cmd/domogeek`), not a single file.
-
-There is no Tekton YAML in this repo: the pipeline and its Gitea webhook trigger are
-defined cluster-side. Watch a run: <https://tekton.banquise.cyrilix.bzh>
+A manual `workflow_dispatch` run publishes `test-<sha>`. The `Dockerfile` remains for local builds
+(`docker build -t domogeek .`) but is not used by CI — keep its base/user/entrypoint in sync with the
+workflow. Migrated from the Tekton pipeline (and its Gitea webhook) on 2026-10-13.
 
 ```sh
-git tag v0.4.0
+git tag v0.4.1
 git push --tags
 ```
+
+Watch the run: Gitea → `cyrilix/domogeek` → Actions.
 
 Note: this replaces the previous `docker.io/cyrilix/domogeek:<git describe>` releases
 built locally via the now-removed `build-docker.sh`/`buildah` script.

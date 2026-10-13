@@ -18,18 +18,17 @@ and date/time information as MCP tools (`get_current_datetime`, `get_calendar_to
 
 ## Continuous builds
 
-Pushing a Git tag matching `v[0-9]*` (e.g. `v0.4.0`) to the Gitea remote triggers the
-homelab Tekton pipeline `gitea-docker-build-multiarch`, which builds and pushes a
-multi-arch (amd64 + arm64) image plus a signed SBOM:
+Pushing a Git tag matching `v[0-9]*` (e.g. `v0.4.1`) to the Gitea remote triggers the Gitea Actions
+workflow `.gitea/workflows/build.yaml` (no Docker, no privileges), which builds and pushes a
+multi-arch (amd64 + arm64) image plus a CycloneDX SBOM to DependencyTrack:
 
 ```
 git.cyrilix.bzh/cyrilix/domogeek:<tag>
 ```
 
 ```sh
-git tag v0.4.0
+git tag v0.4.1
 git push --tags
 ```
 
-Watch the run: <https://tekton.banquise.cyrilix.bzh>
-
+Watch the run: Gitea → `cyrilix/domogeek` → Actions.

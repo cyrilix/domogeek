@@ -1,0 +1,122 @@
+# domogeek image without Docker nor privileges (restricted job pod):
+#   Go cross-compilation (CGO off, netgo, vendored) for amd64/arm64 in the job, then
+#   `crane append` of the binary onto the pinned distroless/static base per arch, entrypoint and
+#   user set with `crane mutate`, `crane index append`, CycloneDX SBOM -> DependencyTrack.
+# Tag convention unchanged (vX.Y.Z): image git.cyrilix.bzh/cyrilix/domogeek:<tag> (+ -amd64/-arm64).
+name: build
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:   # publishes test-<sha>
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: git.cyrilix.bzh
+  IMAGE: git.cyrilix.bzh/cyrilix/domogeek
+  # Same base as the Dockerfile (distroless/static), pinned multi-arch index.
+  BASE: gcr.io/distroless/static-debian12@sha256:d75cdd72874d4790092fcb1b058493ecf6bb5bf2b2b897045b00ff01d91843f2
+  # Toolchain of the Dockerfile builder (golang:1.27); go.mod only requires go 1.25.
+  GO_VERSION: "1.27"
+  CRANE_VERSION: v0.22.1
+  CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+  SYFT_VERSION: 1.54.1
+  SYFT_SHA256: c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47
+  DT_BASE_URL: http://dependency-track-dt-api-server.dependency-track.svc.cluster.local:8080
+
+jobs:
+  build:
+    runs-on: banquise-amd64
+    # 512Mi job pods: bound the Go runtime (compiler, crane, syft).
+    env:
+      GOMEMLIMIT: 350MiB
+      GOGC: "25"
+    steps:
+      - uses: builtin:checkout
+
+      - name: tag
+        id: meta
+        run: |
+          set -eu
+          case "$GITHUB_REF" in
+            refs/tags/*) tag="${GITHUB_REF#refs/tags/}" ;;
+            *)           tag="test-$(echo "$GITHUB_SHA" | cut -c1-8)" ;;
+          esac
+          echo "tag=$tag" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache: false   # vendor/ is committed
+
+      - name: build binaries (cross-compiled, no qemu)
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            mkdir -p "layer-$arch/go/bin"
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -p 2 -mod=vendor -tags netgo -trimpath -ldflags="-s -w" \
+              -o "layer-$arch/go/bin/domogeek" ./cmd/domogeek
+          done
+          go version -m layer-amd64/go/bin/domogeek | head -2
+
+      - name: install crane and syft (pinned, checksum-verified)
+        run: |
+          set -eu
+          mkdir -p "$HOME/bin" && cd "$(mktemp -d)"
+          curl -fsSLo crane.tgz "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz"
+          echo "${CRANE_SHA256}  crane.tgz" | sha256sum -c -
+          tar -xzf crane.tgz crane && mv crane "$HOME/bin/"
+          curl -fsSLo syft.tgz "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          echo "${SYFT_SHA256}  syft.tgz" | sha256sum -c -
+          tar -xzf syft.tgz syft && mv syft "$HOME/bin/"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      # Gitea 28.1 rejects the job token on the container registry (empty access scope for
+      # Actions task tokens) -> dedicated PAT of the package owner, scope write:package only.
+      - name: registry login
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | crane auth login "$REGISTRY" -u cyrilix --password-stdin
+
+      - name: image per arch, then the multi-arch index
+        run: |
+          set -eu
+          tag="${{ steps.meta.outputs.tag }}"
+          epoch=$(git log -1 --format=%ct)
+          for arch in amd64 arm64; do
+            tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" -C "layer-$arch" -cf "app-$arch.tar" .
+            crane append --platform "linux/$arch" -b "$BASE" -f "app-$arch.tar" -t "$IMAGE:$tag-$arch"
+            crane mutate "$IMAGE:$tag-$arch" --entrypoint /go/bin/domogeek --user 1234 --exposed-ports 8080/tcp \
+              --label org.opencontainers.image.source=https://git.cyrilix.bzh/cyrilix/domogeek \
+              --label org.opencontainers.image.version="$tag"
+          done
+          crane index append -t "$IMAGE:$tag" -m "$IMAGE:$tag-amd64" -m "$IMAGE:$tag-arm64"
+          echo "index digest: $(crane digest "$IMAGE:$tag")"
+
+      - name: SBOM (syft, CycloneDX)
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
+        run: |
+          set -eu
+          syft "registry:$IMAGE:${{ steps.meta.outputs.tag }}" --platform linux/amd64 -o cyclonedx-json=sbom.cdx.json
+          echo "components: $(grep -o '"bom-ref"' sbom.cdx.json | wc -l)"
+
+      - name: upload SBOM to DependencyTrack
+        env:
+          DT_API_KEY: ${{ secrets.DT_API_KEY }}
+        run: |
+          set -eu
+          name="${IMAGE#*/}"
+          version="${{ steps.meta.outputs.tag }}"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X PUT \
+            -H "X-Api-Key: $DT_API_KEY" -H 'Content-Type: application/json' \
+            -d '{"name":"oci","active":true,"collectionLogic":"AGGREGATE_DIRECT_CHILDREN"}' \
+            "$DT_BASE_URL/api/v1/project")
+          case "$code" in 201|409) ;; *) echo "parent project 'oci': HTTP $code"; exit 1 ;; esac
+          { printf '{"parentName":"oci","projectName":"%s","projectVersion":"%s","autoCreate":true,"bom":"' "$name" "$version"
+            base64 -w0 sbom.cdx.json; printf '"}'; } > dt-payload.json
+          code=$(curl -s -o dt-response.json -w '%{http_code}' --max-time 120 -X PUT \
+            -H "X-Api-Key: $DT_API_KEY" -H 'Content-Type: application/json' \
+            -d @dt-payload.json "$DT_BASE_URL/api/v1/bom")
+          [ "$code" = 200 ] || { echo "BOM upload: HTTP $code"; cat dt-response.json; exit 1; }
+          echo "DependencyTrack: $name $version accepted"
