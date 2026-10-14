@@ -101,7 +101,10 @@ jobs:
           syft "registry:$IMAGE:${{ steps.meta.outputs.tag }}" --platform linux/amd64 -o cyclonedx-json=sbom.cdx.json
           echo "components: $(grep -o '"bom-ref"' sbom.cdx.json | wc -l)"
 
+      # Releases only: manual test builds (test-<sha>) would otherwise leave throwaway project
+      # versions in DependencyTrack.
       - name: upload SBOM to DependencyTrack
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           DT_API_KEY: ${{ secrets.DT_API_KEY }}
         run: |
