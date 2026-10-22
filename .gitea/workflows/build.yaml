@@ -21,8 +21,8 @@ env:
   GO_VERSION: "1.27"
   CRANE_VERSION: v0.22.1
   CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
-  SYFT_VERSION: 1.54.1
-  SYFT_SHA256: c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47
+  SYFT_VERSION: 1.55.0
+  SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
   DT_BASE_URL: http://dependency-track-dt-api-server.dependency-track.svc.cluster.local:8080
 
 jobs:
