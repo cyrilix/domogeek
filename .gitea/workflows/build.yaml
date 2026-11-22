@@ -21,8 +21,8 @@ env:
   GO_VERSION: "1.27"
   CRANE_VERSION: v0.22.1
   CRANE_SHA256: 0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
-  SYFT_VERSION: 1.57.1
-  SYFT_SHA256: bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c
+  SYFT_VERSION: 1.57.2
+  SYFT_SHA256: ad92bd3ec1b94a3df01d4d0aec199afa9c42b72e86da436ff5f837914d32706b
   DT_BASE_URL: http://dependency-track-dt-api-server.dependency-track.svc.cluster.local:8080
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
           esac
           echo "tag=$tag" | tee -a "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
