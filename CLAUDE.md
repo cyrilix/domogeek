@@ -80,7 +80,7 @@ built locally via the now-removed `build-docker.sh`/`buildah` script.
   - `GET /status` — health-go handler with two checks: a static `calendar` check and a `caldav` check that calls `cal.IsHolidaysFromCaldav`.
   - The process blocks on `SIGTERM` (not `SIGINT`) via a signal channel; `http.ListenAndServe` runs in a goroutine and `zap.S().Fatal`s the process on error.
 
-- `cmd/domogeek/mcp.go` — MCP server built with `github.com/modelcontextprotocol/go-sdk/mcp`, mounted at `/mcp` via `mcp.NewStreamableHTTPHandler`. Exposes four tools, all reading the same package-level `cal`/`location` globals as the `/calendar` and `/datetime` handlers:
+- `cmd/domogeek/mcp.go` — MCP server built with `github.com/modelcontextprotocol/go-sdk/mcp`, mounted at `/mcp` via `mcp.NewStreamableHTTPHandler` in **stateless** mode (`StreamableHTTPOptions{Stateless: true}`: no `Mcp-Session-Id`, GET/DELETE answer 405). Keep it stateless: k8s runs several replicas behind one Service, and in-memory sessions broke every request landing on another replica ("session not found"); `mcp_replicas_test.go` guards this. Exposes four tools, all reading the same package-level `cal`/`location` globals as the `/calendar` and `/datetime` handlers:
   - `get_current_datetime` — same payload as `GET /datetime`: the current date and time.
   - `get_calendar_today` — same payload as `GET /calendar`, for now.
   - `get_calendar_for_date` — same payload for an arbitrary `date` (`YYYY-MM-DD`); an invalid date is returned as a tool error (`CallToolResult.IsError`), not a protocol-level error, so an MCP client/LLM can see and self-correct.

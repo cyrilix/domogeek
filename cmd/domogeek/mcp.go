@@ -88,7 +88,13 @@ func newMCPHandler() http.Handler {
 		Description: "List French public holidays for a given year (defaults to the current year)",
 	}, handleGetHolidays)
 
+	// Stateless: no Mcp-Session-Id, each POST is served on its own. The service
+	// runs several replicas behind one Kubernetes Service, and sessions held in
+	// memory by one replica made every request routed to another one fail with
+	// "session not found" (and all of them after a pod restart). The tools only
+	// read the calendar and never call back the client, so nothing needs a session.
+	// GET and DELETE on /mcp answer 405 in this mode, as the spec allows.
 	return mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return server
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{Stateless: true})
 }
